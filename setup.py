@@ -417,7 +417,8 @@ setuptools.setup(
         "aphrodite": [
             "endpoints/kobold/klite.embd",
             "modeling/layers/quantization/hadamard.safetensors",
-            "py.typed"
+            "py.typed",
+            "modeling/layers/triton_kernel/moe/configs/*.json",
         ]
     },
     include_package_data=True,
