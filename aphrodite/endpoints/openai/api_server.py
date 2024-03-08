@@ -40,6 +40,7 @@ logger = init_logger(__name__)
 kai_api = APIRouter()
 extra_api = APIRouter()
 kobold_lite_ui = ""
+sampler_json = ""
 gen_cache: dict = {}
 
 
@@ -213,6 +214,22 @@ async def show_version(x_api_key: Optional[str] = Header(None)):
     return JSONResponse(content=ver)
 
 
+@app.get("/v1/samplers")
+async def show_samplers(x_api_key: Optional[str] = Header(None)):
+    """Get the available samplers."""
+    global sampler_json
+    if not sampler_json:
+        jsonpath = os.path.dirname(os.path.abspath(__file__))
+        samplerpath = os.path.join(jsonpath, "./samplers.json")
+        samplerpath = os.path.normpath(samplerpath)  # Normalize the path
+        if os.path.exists(samplerpath):
+            with open(samplerpath, "r") as f:
+                sampler_json = json.load(f)
+        else:
+            logger.error("Sampler JSON not found at " + samplerpath)
+    return sampler_json
+
+
 @app.post("/v1/chat/completions")
 async def create_chat_completion(request: ChatCompletionRequest,
                                  raw_request: Request,
@@ -297,6 +314,7 @@ def prepare_engine_payload(
         dynatemp_max=dynatemp_max if kai_payload.dynatemp_range > 0 else 0.0,
         dynatemp_exponent=kai_payload.dynatemp_exponent,
         smoothing_factor=kai_payload.smoothing_factor,
+        smoothing_curve=kai_payload.smoothing_curve,
         tfs=kai_payload.tfs,
         top_p=kai_payload.top_p,
         top_k=kai_payload.top_k,
@@ -482,7 +500,7 @@ async def get_kobold_lite_ui():
 if __name__ == "__main__":
     args = parse_args()
 
-    if 'launch_kobold_api' in args:
+    if args.launch_kobold_api:
         logger.warning("Launching Kobold API server in addition to OpenAI. "
                        "Keep in mind that the Kobold API routes are NOT "
                        "protected via the API key.")
@@ -554,7 +572,7 @@ if __name__ == "__main__":
         trust_remote_code=engine_args.trust_remote_code,
     )
 
-    if 'launch_kobold_api' in args:
+    if args.launch_kobold_api:
         _set_badwords(tokenizer, engine_model_config.hf_config)
 
     app.root_path = args.root_path

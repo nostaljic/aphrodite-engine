@@ -25,6 +25,7 @@ class EngineArgs:
     tensor_parallel_size: int = 1
     max_parallel_loading_workers: Optional[int] = None
     block_size: int = 16
+    context_shift: bool = False
     swap_space: int = 4  # GiB
     gpu_memory_utilization: float = 0.90
     max_num_batched_tokens: Optional[int] = None
@@ -166,6 +167,9 @@ class EngineArgs:
                             default=EngineArgs.block_size,
                             choices=[8, 16, 32],
                             help='token block size')
+        parser.add_argument('--context-shift',
+                            action='store_true',
+                            help='Enable context shifting.')
         parser.add_argument('--seed',
                             type=int,
                             default=EngineArgs.seed,
@@ -204,18 +208,20 @@ class EngineArgs:
                             action='store_true',
                             help='disable logging statistics')
         # Quantization settings.
-        parser.add_argument(
-            '--quantization',
-            '-q',
-            type=str,
-            choices=['awq', 'gguf', 'gptq', 'quip', 'squeezellm', None],
-            default=EngineArgs.quantization,
-            help='Method used to quantize the weights. If '
-            'None, we first check the `quantization_config` '
-            'attribute in the model config file. If that is '
-            'None, we assume the model weights are not '
-            'quantized and use `dtype` to determine the data '
-            'type of the weights.')
+        parser.add_argument('--quantization',
+                            '-q',
+                            type=str,
+                            choices=[
+                                'awq', 'gguf', 'gptq', 'quip', 'squeezellm',
+                                'marlin', None
+                            ],
+                            default=EngineArgs.quantization,
+                            help='Method used to quantize the weights. If '
+                            'None, we first check the `quantization_config` '
+                            'attribute in the model config file. If that is '
+                            'None, we assume the model weights are not '
+                            'quantized and use `dtype` to determine the data '
+                            'type of the weights.')
         parser.add_argument('--enforce-eager',
                             action='store_true',
                             help='Always use eager-mode PyTorch. If False, '
@@ -294,7 +300,8 @@ class EngineArgs:
         cache_config = CacheConfig(self.block_size,
                                    self.gpu_memory_utilization,
                                    self.swap_space, self.kv_cache_dtype,
-                                   model_config.get_sliding_window())
+                                   model_config.get_sliding_window(),
+                                   self.context_shift)
         parallel_config = ParallelConfig(self.pipeline_parallel_size,
                                          self.tensor_parallel_size,
                                          self.worker_use_ray,
