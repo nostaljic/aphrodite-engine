@@ -56,6 +56,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   // Quantization ops
   ops.def("aqlm_gemm", &aqlm_gemm, "Quantized GEMM for AQLM");
   ops.def("awq_gemm", &awq_gemm, "Quantized GEMM for AWQ");
+  ops.def("awq_group_gemm", &awq_group_gemm, "Grouped Quantized GEMM for AWQ");
   ops.def("awq_dequantize", &awq_dequantize, "Dequantization for AWQ");
   ops.def("autoquant_convert_s4_k_m8", &autoquant_convert_s4_k_m8, "convert kernel.");
   ops.def("autoquant_s4_f16_gemm", &autoquant_s4_f16_gemm, "weight int4 activation float16 gemm kernel.");
@@ -66,6 +67,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   ops.def("gptq_gemm", &gptq_gemm, "Quantized GEMM for GPTQ");
   ops.def("group_gptq_gemm", &group_gptq_gemm, "Grouped Quantized GEMM for GPTQ");
   ops.def("gptq_shuffle", &gptq_shuffle, "Post processing for GPTQ");
+  ops.def("dequant_gptq", &dequant_gptq, "Dequantization for GPTQ");
   ops.def("squeezellm_gemm", &squeezellm_gemm, "Quantized GEMM for SqueezeLLM");
   ops.def("ggml_dequantize", &ggml_dequantize, "ggml_dequantize");
   ops.def("ggml_mul_mat_vec", &ggml_mul_mat_vec, "ggml_mul_mat_vec");

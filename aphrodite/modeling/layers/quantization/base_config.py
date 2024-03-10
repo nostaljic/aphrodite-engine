@@ -74,3 +74,8 @@ class QuantizationConfig(ABC):
 
     def quant_vocab(self) -> Optional[bool]:
         return False
+
+    @abstractmethod
+    def support_fused_moe(self) -> bool:
+        """Whether fused moe kernel is implemented"""
+        raise NotImplementedError

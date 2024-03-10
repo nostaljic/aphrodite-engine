@@ -67,6 +67,8 @@ class QuipConfig(QuantizationConfig):
     def rope_style(self) -> Optional[bool]:
         return None
 
+    def support_fused_moe(self) -> bool:
+        return False
 
 class QuipLinearMethod(LinearMethodBase):
     """Linear method for Quip.
@@ -198,3 +200,10 @@ class QuipLinearMethod(LinearMethodBase):
         out = out.view(*x.shape[:-1], out.shape[-1])
         out = out + bias if bias is not None else out
         return out
+
+    def apply_moe_weights(self, w1: Dict[str,
+                                         torch.Tensor], w2: Dict[str,
+                                                                 torch.Tensor],
+                          x: torch.Tensor, gating_output: torch.Tensor,
+                          topk: int, renormalize: bool) -> torch.Tensor:
+        raise NotImplementedError

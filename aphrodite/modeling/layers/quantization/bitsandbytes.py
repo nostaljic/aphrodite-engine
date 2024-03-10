@@ -91,6 +91,9 @@ class BitsandBytesConfig(QuantizationConfig):
 
     def get_scaled_act_names(self) -> List[str]:
         return ["gelu", "gelu_fast", "gelu_new", "gelu_pytorch_tanh"]
+    
+    def support_fused_moe(self) -> bool:
+        return False
 
 
 class BNBLinearMethod(LinearMethodBase):
@@ -208,6 +211,13 @@ class BNBLinearMethod(LinearMethodBase):
                 del state.CB
                 weight.data = state.CxB
             return out
+    
+    def apply_moe_weights(self, w1: Dict[str,
+                                         torch.Tensor], w2: Dict[str,
+                                                                 torch.Tensor],
+                          x: torch.Tensor, gating_output: torch.Tensor,
+                          topk: int, renormalize: bool) -> torch.Tensor:
+        raise NotImplementedError
 
 
 T = TypeVar("T", bound="torch.nn.Module")
