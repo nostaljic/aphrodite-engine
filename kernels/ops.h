@@ -150,6 +150,29 @@ void gptq_shuffle(
   torch::Tensor q_perm,
   int bit);
 
+torch::Tensor group_gptq_gemm(
+    torch::Tensor a,
+    torch::Tensor b_q_weight,
+    torch::Tensor b_gptq_qzeros,
+    torch::Tensor b_gptq_scales,
+    torch::Tensor b_g_idx,
+    torch::Tensor topk_weights,
+    torch::Tensor sorted_token_ids_ptr,
+    torch::Tensor expert_ids_ptr,
+    torch::Tensor num_tokens_post_padded,
+    bool mul_weights,
+    bool use_exllama
+);
+
+torch::Tensor dequant_gptq(
+    torch::Tensor b_q_weight,
+    torch::Tensor b_gptq_qzeros,
+    torch::Tensor b_gptq_scales,
+    torch::Tensor b_g_idx,
+    int bits,
+    bool use_exllama
+);
+
 torch::Tensor aqlm_gemm(
   const torch::Tensor& input,
   const torch::Tensor& codes,
