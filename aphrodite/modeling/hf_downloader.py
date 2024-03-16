@@ -22,6 +22,9 @@ from aphrodite.modeling.layers.quantization import (get_quantization_config,
                                                     QuantizationConfig)
 
 
+_xdg_cache_home = os.getenv('XDG_CACHE_HOME', os.path.expanduser('~/.cache'))
+_aphrodite_filelocks_path = os.path.join(_xdg_cache_home, 'aphrodite/locks/')
+
 class Disabledtqdm(tqdm):  # pylint: disable=inconsistent-mro
 
     def __init__(self, *args, **kwargs):
@@ -29,7 +32,8 @@ class Disabledtqdm(tqdm):  # pylint: disable=inconsistent-mro
 
 
 def get_lock(model_name_or_path: str, cache_dir: Optional[str] = None):
-    lock_dir = cache_dir if cache_dir is not None else "/tmp"
+    lock_dir = cache_dir if cache_dir is not None else _aphrodite_filelocks_path
+    os.makedirs(os.path.dirname(lock_dir), exist_ok=True)
     lock_file_name = model_name_or_path.replace("/", "-") + ".lock"
     lock = filelock.FileLock(os.path.join(lock_dir, lock_file_name))
     return lock
