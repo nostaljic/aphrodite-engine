@@ -159,6 +159,12 @@ torch::Tensor aqlm_gemm(
   const std::optional<torch::Tensor>& bias
 );
 
+torch::Tensor aqlm_dequant(
+  const torch::Tensor& codes,
+  const torch::Tensor& codebooks,
+  const torch::Tensor& codebook_partition_sizes
+);
+
 torch::Tensor ggml_dequantize(
     torch::Tensor X,
     int8_t type,

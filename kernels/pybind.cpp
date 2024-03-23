@@ -55,6 +55,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 #ifndef USE_ROCM
   // Quantization ops
   ops.def("aqlm_gemm", &aqlm_gemm, "Quantized GEMM for AQLM");
+  ops.def("aqlm_dequant", &aqlm_dequant, "Decompression method for AQLM");
   ops.def("awq_gemm", &awq_gemm, "Quantized GEMM for AWQ");
   ops.def("awq_dequantize", &awq_dequantize, "Dequantization for AWQ");
   ops.def("autoquant_convert_s4_k_m8", &autoquant_convert_s4_k_m8, "convert kernel.");
