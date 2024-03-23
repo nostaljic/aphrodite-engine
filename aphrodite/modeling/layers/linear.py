@@ -57,12 +57,20 @@ class UnquantizedLinearMethod(LinearMethodBase):
     def create_weights(self, input_size_per_partition: int,
                        output_partition_sizes: List[int], input_size: int,
                        output_size: int,
-                       params_dtype: torch.dtype) -> Dict[str, Any]:
+                       params_dtype: torch.dtype,
+                       cpu_offload: bool = False) -> Dict[str, Any]:
         output_size_per_partition = sum(output_partition_sizes)
-        weight = Parameter(torch.empty(output_size_per_partition,
+        if cpu_offload:
+            weight = Parameter(torch.empty(output_size_per_partition,
                                        input_size_per_partition,
-                                       dtype=params_dtype),
+                                       dtype=params_dtype,
+                                       device='cpu'),
                            requires_grad=False)
+        else:
+            weight = Parameter(torch.empty(output_size_per_partition,
+                                        input_size_per_partition,
+                                        dtype=params_dtype),
+                            requires_grad=False)
         set_weight_attrs(weight, {"input_dim": 1, "output_dim": 0})
         return {"weight": weight}
 
@@ -168,6 +176,7 @@ class ColumnParallelLinear(torch.nn.Module):
         params_dtype: Optional[torch.dtype] = None,
         linear_method: Optional[LinearMethodBase] = None,
         output_sizes: Optional[List[int]] = None,
+        cpu_offload: bool = False,
     ):
         super().__init__()
 
@@ -187,9 +196,11 @@ class ColumnParallelLinear(torch.nn.Module):
         if output_sizes is None:
             output_sizes = [output_size]
         self.linear_method = linear_method
+        self.cpu_offload = cpu_offload
         self.linear_weights = self.linear_method.create_weights(
             self.input_size, [x // tp_size for x in output_sizes],
-            self.input_size, self.output_size, self.params_dtype)
+            self.input_size, self.output_size, self.params_dtype,
+            self.cpu_offload)
 
         for name, weight in self.linear_weights.items():
             if isinstance(weight, torch.nn.parameter.Parameter):
@@ -388,6 +399,7 @@ class QKVParallelLinear(ColumnParallelLinear):
         skip_bias_add: bool = False,
         params_dtype: Optional[torch.dtype] = None,
         linear_method: Optional[LinearMethodBase] = None,
+        cpu_offload: bool = False,
     ):
         self.hidden_size = hidden_size
         self.head_size = head_size
@@ -414,7 +426,7 @@ class QKVParallelLinear(ColumnParallelLinear):
                              self.num_heads * tp_size * self.head_size,
                              self.num_kv_heads * tp_size * self.head_size,
                              self.num_kv_heads * tp_size * self.head_size
-                         ])
+                         ], cpu_offload)
 
     def weight_loader(self,
                       param: Parameter,
@@ -543,6 +555,7 @@ class RowParallelLinear(torch.nn.Module):
         params_dtype: Optional[torch.dtype] = None,
         reduce_results: bool = True,
         linear_method: Optional[LinearMethodBase] = None,
+        cpu_offload: bool = False,
     ):
         super().__init__()
         # Keep input parameters
@@ -561,9 +574,10 @@ class RowParallelLinear(torch.nn.Module):
         if linear_method is None:
             linear_method = UnquantizedLinearMethod()
         self.linear_method = linear_method
+        self.cpu_offload = cpu_offload
         self.linear_weights = self.linear_method.create_weights(
             self.input_size_per_partition, [self.output_size], self.input_size,
-            self.output_size, self.params_dtype)
+            self.output_size, self.params_dtype, self.cpu_offload)
         for name, weight in self.linear_weights.items():
             if isinstance(weight, torch.nn.parameter.Parameter):
                 self.register_parameter(name, weight)

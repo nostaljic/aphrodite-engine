@@ -378,6 +378,7 @@ class CacheConfig:
         cache_quant_params_path: Optional[str] = None,
         sliding_window: Optional[int] = None,
         context_shift: bool = False,
+        cpu_offload: bool = False,
     ) -> None:
         self.block_size = block_size
         self.gpu_memory_utilization = gpu_memory_utilization
@@ -386,6 +387,7 @@ class CacheConfig:
         self.sliding_window = sliding_window
         self.cache_quant_params_path = cache_quant_params_path
         self.context_shift = context_shift
+        self.cpu_offload = cpu_offload
         self._verify_args()
         self._verify_cache_dtype()
 

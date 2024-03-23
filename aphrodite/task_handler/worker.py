@@ -44,6 +44,7 @@ class Worker:
         kv_cache_dtype: Optional[str] = "auto",
         kv_quant_params_path: Optional[str] = None,
         is_driver_worker: bool = False,
+        cpu_offload: bool = False,
     ) -> None:
         self.model_config = model_config
         self.parallel_config = parallel_config
@@ -65,7 +66,8 @@ class Worker:
             lora_config=self.lora_config,
             kv_cache_dtype=kv_cache_dtype,
             kv_quant_params_path=kv_quant_params_path,
-            is_driver_worker=is_driver_worker)
+            is_driver_worker=is_driver_worker,
+            cpu_offload=cpu_offload)
         # Uninitialized cache engine. Will be initialized by
         # self.init_cache_engine().
         self.cache_config = None

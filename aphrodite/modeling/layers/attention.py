@@ -41,6 +41,7 @@ class PagedAttention(nn.Module):
         num_kv_heads: Optional[int] = None,
         alibi_slopes: Optional[List[float]] = None,
         sliding_window: Optional[int] = None,
+        cpu_offload: bool = False,
     ) -> None:
         super().__init__()
         self.num_heads = num_heads

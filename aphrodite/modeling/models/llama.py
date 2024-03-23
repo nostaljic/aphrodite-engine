@@ -46,6 +46,7 @@ from aphrodite.modeling.layers.vocab_parallel_embedding import (
     ParallelLMHead,
     DEFAULT_VOCAB_PADDING_SIZE,
 )
+from aphrodite.modeling.layers.cpu_offload import SupportCpuOffLoadWeight
 from aphrodite.modeling.megatron.parallel_state import (
     get_tensor_model_parallel_world_size, )
 from aphrodite.modeling.sampling_metadata import SamplingMetadata
@@ -67,6 +68,7 @@ class LlamaMLP(nn.Module):
         intermediate_size: int,
         hidden_act: str,
         linear_method: Optional[LinearMethodBase] = None,
+        cpu_offload: bool = False,
     ) -> None:
         super().__init__()
         if (linear_method is not None
@@ -77,12 +79,14 @@ class LlamaMLP(nn.Module):
                 intermediate_size,
                 bias=False,
                 linear_method=linear_method,
+                cpu_offload=cpu_offload,
             )
             self.up_proj = ColumnParallelLinear(
                 hidden_size,
                 intermediate_size,
                 bias=False,
                 linear_method=linear_method,
+                cpu_offload=cpu_offload,
             )
         else:
             self.merge_weight = True
@@ -97,12 +101,14 @@ class LlamaMLP(nn.Module):
             hidden_size,
             bias=False,
             linear_method=linear_method,
+            cpu_offload=cpu_offload,
         )
         if hidden_act != "silu":
             raise ValueError(f"Unsupported activation: {hidden_act}. "
                              "Only silu is supported for now.")
         self.act_fn = SiluAndMul()
 
+    @SupportCpuOffLoadWeight(["gate_proj", "up_proj", "down_proj"], 0)
     def forward(self, x):
         if self.merge_weight:
             gate_up, _ = self.gate_up_proj(x)
@@ -128,6 +134,7 @@ class LlamaAttention(nn.Module):
         linear_method: Optional[LinearMethodBase] = None,
         bias: bool = False,
         sliding_window: Optional[int] = None,
+        cpu_offload: bool = False,
     ) -> None:
         super().__init__()
         self.hidden_size = hidden_size
@@ -158,18 +165,21 @@ class LlamaAttention(nn.Module):
             self.q_proj = ColumnParallelLinear(hidden_size,
                                                self.q_size,
                                                bias=bias,
-                                               linear_method=linear_method)
+                                               linear_method=linear_method,
+                                               cpu_offload=cpu_offload)
             self.k_proj = ColumnParallelLinear(
                 hidden_size,
                 self.kv_size,
                 bias=bias,
                 linear_method=linear_method,
+                cpu_offload=cpu_offload,
             )
             self.v_proj = ColumnParallelLinear(
                 hidden_size,
                 self.kv_size,
                 bias=bias,
                 linear_method=linear_method,
+                cpu_offload=cpu_offload,
             )
         else:
             self.merge_weight = True
@@ -180,12 +190,14 @@ class LlamaAttention(nn.Module):
                 self.total_num_kv_heads,
                 bias=bias,
                 linear_method=linear_method,
+                cpu_offload=cpu_offload,
             )
         self.o_proj = RowParallelLinear(
             self.total_num_heads * self.head_dim,
             hidden_size,
             bias=bias,
             linear_method=linear_method,
+            cpu_offload=cpu_offload,
         )
 
         is_neox_style = (True if linear_method is None
@@ -205,8 +217,11 @@ class LlamaAttention(nn.Module):
             self.scaling,
             num_kv_heads=self.num_kv_heads,
             sliding_window=sliding_window,
+            cpu_offload=cpu_offload,
         )
 
+    @SupportCpuOffLoadWeight(["qkv_proj", "q_proj", "k_proj",
+                              "v_proj", "o_proj"], "hidden_states")
     def forward(
         self,
         positions: torch.Tensor,
@@ -237,6 +252,7 @@ class LlamaDecoderLayer(nn.Module):
         self,
         config: LlamaConfig,
         linear_method: Optional[LinearMethodBase] = None,
+        cpu_offload: bool = False,
     ) -> None:
         super().__init__()
         self.hidden_size = config.hidden_size
@@ -256,12 +272,14 @@ class LlamaDecoderLayer(nn.Module):
             linear_method=linear_method,
             bias=getattr(config, "bias", False),
             sliding_window=sliding_window,
+            cpu_offload=cpu_offload,
         )
         self.mlp = LlamaMLP(
             hidden_size=self.hidden_size,
             intermediate_size=config.intermediate_size,
             hidden_act=config.hidden_act,
             linear_method=linear_method,
+            cpu_offload=cpu_offload,
         )
 
         # Some old Yi finetunes and quants have not been llama-fied
@@ -274,6 +292,7 @@ class LlamaDecoderLayer(nn.Module):
             self.post_attention_layernorm = RMSNorm(config.hidden_size,
                                                     eps=config.rms_norm_eps)
 
+    @SupportCpuOffLoadWeight(["self_attn", "mlp"], 0)
     def forward(
         self,
         positions: torch.Tensor,
@@ -321,6 +340,7 @@ class LlamaModel(nn.Module):
         config: LlamaConfig,
         linear_method: Optional[LinearMethodBase] = None,
         lora_config: Optional[LoRAConfig] = None,
+        cpu_offload: bool = False,
     ) -> None:
         super().__init__()
         self.config = config
@@ -336,7 +356,7 @@ class LlamaModel(nn.Module):
             org_num_embeddings=config.vocab_size,
         )
         self.layers = nn.ModuleList([
-            LlamaDecoderLayer(config, linear_method)
+            LlamaDecoderLayer(config, linear_method, cpu_offload)
             for _ in range(config.num_hidden_layers)
         ])
         self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
@@ -398,11 +418,13 @@ class LlamaForCausalLM(nn.Module):
         config: LlamaConfig,
         linear_method: Optional[LinearMethodBase] = None,
         lora_config: Optional[LoRAConfig] = None,
+        cpu_offload: bool = False,
     ) -> None:
         super().__init__()
         self.config = config
         self.linear_method = linear_method
-        self.model = LlamaModel(config, linear_method, lora_config=lora_config)
+        self.model = LlamaModel(config, linear_method, lora_config=lora_config,
+                                cpu_offload=cpu_offload)
         self.unpadded_vocab_size = config.vocab_size
         if lora_config:
             self.unpadded_vocab_size += lora_config.lora_extra_vocab_size
@@ -436,6 +458,11 @@ class LlamaForCausalLM(nn.Module):
         hidden_states: torch.Tensor,
         sampling_metadata: SamplingMetadata,
     ) -> Optional[SamplerOutput]:
+        cpu_offload = False
+        if self.lm_head.device.data == "cpu":
+            cpu_offload = True
+            self.lm_head.data = self.lm_head.data.cuda(
+                device=hidden_states.device)
         if (self.linear_method is not None
                 and not self.linear_method.quant_config.merge_weight()):
             next_tokens = self.quant_sampler(self.lm_head(hidden_states),
@@ -443,6 +470,9 @@ class LlamaForCausalLM(nn.Module):
         else:
             next_tokens = self.sampler(self.lm_head.weight, hidden_states,
                                        sampling_metadata)
+        
+        if cpu_offload:
+            self.lm_head.data = self.lm_head.data.cpu()
         return next_tokens
 
     def load_weights(
@@ -451,6 +481,7 @@ class LlamaForCausalLM(nn.Module):
         cache_dir: Optional[str] = None,
         load_format: str = "auto",
         revision: Optional[str] = None,
+        cpu_offload: bool = False,
     ):
         stacked_params_mapping = [
             # (param_name, shard_name, shard_id)

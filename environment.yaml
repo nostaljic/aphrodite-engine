@@ -1,4 +1,4 @@
-name: aphrodite
+name: aphrodite-runtime
 channels:
   - nvidia
   - pytorch

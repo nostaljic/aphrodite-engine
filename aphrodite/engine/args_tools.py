@@ -50,6 +50,7 @@ class EngineArgs:
     lora_dtype = 'auto'
     max_cpu_loras: Optional[int] = None
     device: str = 'cuda'
+    cpu_offload: bool = False
 
     def __post_init__(self):
         if self.tokenizer is None:
@@ -300,6 +301,10 @@ class EngineArgs:
                             choices=['cuda'],
                             help=('Device to use for model execution. '
                                   'Currently, only "cuda" is supported.'))
+        parser.add_argument('--cpu-offload',
+                            action='store_true',
+                            default=EngineArgs.cpu_offload,
+                            help='If True, offload the model weights to CPU.')
         return parser
 
     @classmethod
@@ -327,7 +332,7 @@ class EngineArgs:
                                    self.swap_space, self.kv_cache_dtype,
                                    self.kv_quant_params_path,
                                    model_config.get_sliding_window(),
-                                   self.context_shift)
+                                   self.context_shift, self.cpu_offload)
         parallel_config = ParallelConfig(self.pipeline_parallel_size,
                                          self.tensor_parallel_size,
                                          self.worker_use_ray,

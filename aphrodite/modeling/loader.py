@@ -43,7 +43,8 @@ def _get_model_architecture(model_config: ModelConfig) -> Type[nn.Module]:
 
 def get_model(model_config: ModelConfig,
               device_config: DeviceConfig,
-              lora_config: Optional[LoRAConfig] = None) -> nn.Module:
+              lora_config: Optional[LoRAConfig] = None,
+              cpu_offload: bool = False) -> nn.Module:
     model_class = _get_model_architecture(model_config)
 
     # Get the (maybe quantized) linear method.
@@ -81,7 +82,8 @@ def get_model(model_config: ModelConfig,
                     "be added in the future. If this is important to you, "
                     "please open an issue on github.")
             else:
-                model = model_class(model_config.hf_config, linear_method)
+                model = model_class(model_config.hf_config, linear_method,
+                                    cpu_offload)
         if model_config.load_format == "dummy":
             # NOTE: For accurate performance evaluation, we assign
             # random values to the weights.
@@ -89,7 +91,8 @@ def get_model(model_config: ModelConfig,
         else:
             # Load the weights from the cached or downloaded files.
             model.load_weights(model_config.model, model_config.download_dir,
-                               model_config.load_format, model_config.revision)
+                               model_config.load_format, model_config.revision,
+                               cpu_offload)
         if isinstance(linear_method, BNBLinearMethod):
             replace_quant_params(model,
                                  quant_config=linear_method.quant_config,

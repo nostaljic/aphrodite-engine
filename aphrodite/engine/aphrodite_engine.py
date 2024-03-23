@@ -152,6 +152,7 @@ class AphroditeEngine:
             kv_cache_dtype=self.cache_config.cache_dtype,
             kv_quant_params_path=(self.cache_config.cache_quant_params_path),
             is_driver_worker=True,
+            cpu_offload=self.cache_config.cpu_offload,
         )
         self._run_workers("init_model")
         self._run_workers("load_model")
@@ -277,6 +278,7 @@ class AphroditeEngine:
             kv_cache_dtype=self.cache_config.cache_dtype,
             kv_quant_params_path=(self.cache_config.cache_quant_params_path),
             is_driver_worker=True,
+            cpu_offload=self.cache_config.cpu_offload,
         )
 
         self._run_workers("init_model", cupy_port=get_open_port())
@@ -361,7 +363,8 @@ class AphroditeEngine:
         self._run_workers("init_cache_engine", cache_config=self.cache_config)
         # Warm up the model. This includes capturing the model into CUDA graph
         # if enforce_eager is False.
-        self._run_workers("warm_up_model")
+        if self.cache_config.cpu_offload is False:
+            self._run_workers("warm_up_model")
 
     @classmethod
     def from_engine_args(cls, engine_args: EngineArgs) -> "AphroditeEngine":

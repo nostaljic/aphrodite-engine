@@ -55,12 +55,14 @@ class ModelRunner:
         kv_cache_dtype: Optional[str] = "auto",
         kv_quant_params_path: Optional[str] = None,
         is_driver_worker: bool = False,
+        cpu_offload: Optional[bool] = False,
     ):
         self.model_config = model_config
         self.parallel_config = parallel_config
         self.scheduler_config = scheduler_config
         self.lora_config = lora_config
         self.is_driver_worker = is_driver_worker
+        self.cpu_offload = cpu_offload
 
         # model_config can be None in tests/samplers/test_sampler.py.
         # FIXME: This is a hack to make the tests work. Refactor this.
@@ -119,7 +121,8 @@ class ModelRunner:
     def load_model(self) -> None:
         with measure_cuda_memory() as m:
             self.model = get_model(self.model_config, self.device_config,
-                                   self.lora_config)
+                                   self.lora_config,
+                                   cpu_offload=self.cpu_offload)
         self.model_memory_usage = m.consumed_memory
         tp = get_tensor_model_parallel_world_size()
         logger.info(
@@ -684,7 +687,7 @@ class ModelRunner:
             self.set_active_loras(lora_requests, lora_mapping)
 
         # Execute the model.
-        if input_metadata.use_cuda_graph:
+        if input_metadata.use_cuda_graph and not self.cpu_offload:
             graph_batch_size = input_tokens.shape[0]
             model_executable = self.graph_runners[graph_batch_size]
         else:
