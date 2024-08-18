@@ -29,7 +29,6 @@ from aphrodite.common.sequence import (
     SequenceOutput,
     SequenceStatus,
 )
-from aphrodite.transformers_utils.tokenizer import (detokenize_incrementally)
 from aphrodite.transformers_utils.tokenizer_group import (BaseTokenizerGroup,
                                                           get_tokenizer_group)
 from aphrodite.common.utils import (
@@ -40,6 +39,10 @@ _LOCAL_LOGGING_INTERVAL_SEC = 5
 
 
 class AphroditeEngine:
+    """
+    QWEN2 72B INSTRUCT 전용 Aphrodite Engine 변경 개발
+    1. 특정 프로젝트 경로 내 중국어 대치용 JSON 필요 (./config/chinese_convert.json)
+    """
     """An LLM engine that receives requests and generates texts.
 
     This is the main class for the Aphrodite engine. It receives requests
@@ -107,7 +110,16 @@ class AphroditeEngine:
 
         self._init_tokenizer()
         self.seq_counter = Counter()
-
+        self.chinese_filter = None
+        with open("./config/chinese_convert.json", "r") as cf:
+            chinese_convert = json.load(cf)
+            self.chinese_filter = dict(
+                zip(
+                    [int(c) for c in chinese_convert.keys()],
+                    [list(v) for v in chinese_convert.values()],
+                )
+            )
+            del chinese_convert
         self.model_executor = executor_class(model_config, cache_config,
                                              parallel_config, scheduler_config,
                                              device_config, lora_config)
@@ -736,6 +748,89 @@ class AphroditeEngine:
             time_e2e_requests=time_e2e_requests,
         )
 
+    def convert_ids_to_token_ids(self,token_ids:list):
+        tokens = []
+        for t in token_ids:
+            try:
+                if t==151643 or t==151644 or t==151645: #<|endoftext|>
+                    tokens.append(t)
+                else:
+                    tokens+=self.chinese_filter[t]
+            except Exception as e:
+                print(f'{random_color()}Error#convert_ids_to_token_ids : {RESET}',t )
+        return tokens
+        
+    def detokenize_incrementally(
+        self,
+        tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
+        all_input_ids: List[int],
+        prev_tokens: Optional[List[str]],
+        prefix_offset: int = 0,
+        read_offset: int = 0,
+        skip_special_tokens: bool = False,
+        spaces_between_special_tokens: bool = True,
+    ) -> Tuple[List[str], str, int, int]:
+        new_token_id = all_input_ids[-1]
+
+        # This is the first iteration for this sequence            
+        if prev_tokens is None:
+            #print("1. inputs: ",all_input_ids, type(all_input_ids),type(all_input_ids[0]))
+            all_input_ids = self.convert_ids_to_token_ids(all_input_ids)
+            new_tokens = tokenizer.convert_ids_to_tokens(
+                all_input_ids, skip_special_tokens=skip_special_tokens) 
+            #print("1. outputs: ",new_tokens, type(new_tokens),type(new_tokens[0]))
+            output_tokens = new_tokens
+            # 5 is an arbitrary value that should work for all
+            # tokenizers (bigger = more conservative).
+            # Subtract 1 extra to account for the generated token.
+            prefix_offset = max(len(output_tokens) - 6, 0)
+            # If the first new token is a special token, we can't skip 1 extra token
+            if skip_special_tokens and new_token_id in tokenizer.all_special_ids:
+                read_offset = max(len(output_tokens), 0)
+            else:
+                read_offset = max(len(output_tokens) - 1, 0)
+        else:
+            new_token_id = [new_token_id]
+            #print("2. inputs: ",new_token_id)
+            new_token_id = self.convert_ids_to_token_ids(new_token_id)
+            new_tokens = tokenizer.convert_ids_to_tokens(
+                new_token_id, skip_special_tokens=skip_special_tokens)
+            #print("2. outputs: ",new_tokens, type(new_tokens),type(new_tokens[0]))
+            output_tokens = prev_tokens + new_tokens
+            #print("2.outputs_total:",output_tokens, type(output_tokens),type(output_tokens[0]))
+            
+        # The prefix text is necessary only to defeat cleanup algorithms in
+        # the decode which decide to add a space or not depending on the
+        # surrounding ids.
+        if tokenizer.is_fast or not tokenizer.get_added_vocab():
+            prefix_text = tokenizer.convert_tokens_to_string(
+                output_tokens[prefix_offset:read_offset])
+            new_text = tokenizer.convert_tokens_to_string(
+                output_tokens[prefix_offset:])
+        else:
+            prefix_text = _convert_tokens_to_string_with_added_encoders(
+                tokenizer,
+                output_tokens[prefix_offset:read_offset],
+                skip_special_tokens=skip_special_tokens,
+                spaces_between_special_tokens=spaces_between_special_tokens,
+            )
+            new_text = _convert_tokens_to_string_with_added_encoders(
+                tokenizer,
+                output_tokens[prefix_offset:],
+                skip_special_tokens=skip_special_tokens,
+                spaces_between_special_tokens=spaces_between_special_tokens,
+            )
+    
+        if len(new_text) > len(prefix_text) and not new_text.endswith("�"):
+            # utf-8 char at the end means it's a potential unfinished byte sequence
+            # from byte fallback tokenization.
+            # If it's in the middle, it's probably a real invalid id generated
+            # by the model
+            new_text = new_text[len(prefix_text):]
+            return new_tokens, new_text, read_offset, len(output_tokens)
+        else:
+            return new_tokens, "", prefix_offset, read_offset
+
     def _decode_logprobs(
         self,
         seq: Sequence,
@@ -753,7 +848,7 @@ class AphroditeEngine:
                     new_text,
                     prefix_offset,
                     read_offset,
-                ) = detokenize_incrementally(
+                ) = self.detokenize_incrementally(
                     self.get_tokenizer_for_seq(seq),
                     all_input_ids=all_input_ids_with_logprob,
                     prev_tokens=seq.tokens,
@@ -776,7 +871,7 @@ class AphroditeEngine:
             new_output_text,
             prefix_offset,
             read_offset,
-        ) = detokenize_incrementally(
+        ) = self.detokenize_incrementally(
             self.get_tokenizer_for_seq(seq),
             all_input_ids=all_input_ids,
             prev_tokens=seq.tokens,
